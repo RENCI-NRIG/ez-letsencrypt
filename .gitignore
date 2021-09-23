@@ -1,0 +1,7 @@
+# files
+letsencrypt.conf
+
+# directories
+.idea/
+certsdir/
+webrootdir/
