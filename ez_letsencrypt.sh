@@ -107,6 +107,11 @@ EOF
 
 # run nginx container exposing http port 80 only
 run_http_nginx_container() {
+    IS_NGINX_UP=$(docker ps -f "name=${nginx_container}" -q)
+    if [ ! -z "$IS_NGINX_UP" ]; then
+        docker stop $nginx_container >/dev/null 2>&1
+        docker rm -fv $nginx_container >/dev/null 2>&1
+    fi
     case $selinux in
     (true)
         docker run -d --name $nginx_container \
@@ -127,6 +132,11 @@ run_http_nginx_container() {
 
 # run nginx container exposing http/https ports 80 and 443
 run_https_nginx_container() {
+    IS_NGINX_UP=$(docker ps -f "name=${nginx_container}" -q)
+    if [ ! -z "$IS_NGINX_UP" ]; then
+        docker stop $nginx_container >/dev/null 2>&1
+        docker rm -fv $nginx_container >/dev/null 2>&1
+    fi
     case $selinux in
     (true)
         docker run -d --name $nginx_container \

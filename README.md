@@ -1,18 +1,17 @@
 # EZ Let's Encrypt
 
-A shell script to obtain and renew [Let's Encrypt](https://letsencrypt.org) certificates using the `--webroot` method of [certificate issuance](https://certbot.eff.org/docs/using.html#webroot).
+A shell script to obtain and renew [Let's Encrypt](https://letsencrypt.org) certificates using Certbot's `--webroot` method of [certificate issuance](https://certbot.eff.org/docs/using.html#webroot).
 
-## Prerequisites
+## Table of Contents
 
-Before starting with EZ Let’s Encrypt, you need to:
+- [About](#about)
+- [Prerequisites](#prereq)
+- [Usage](#usage)
+- [Detailed Usage](#detusage)
+- [Examples](#examples)
+- [References](#ref)
 
-- Have [Docker](https://docs.docker.com/get-docker/) installed on the host you wish to install the Let's Encrypt certificate on
-- Own or control the registered domain name for the certificate. If you don’t have a registered domain name, you can use a domain name registrar, such as [GoDaddy](https://www.godaddy.com/domains/domain-name-search) or [dnsexit](https://www.dnsexit.com/)
-- Create a DNS record that associates your domain name and your server’s public IP address
-
-Now you can easily set up Let’s Encrypt SSL certificates with Nginx and Certbot using Docker.
-
-## About
+## <a name="about"></a>About
 
 This purpose of this script is to make the process of obtaining and renewing Let's Encrypt certificates as easy as possible. To do this [Cerbot](https://certbot.eff.org/docs/index.html) is used in two ways:
 
@@ -22,8 +21,20 @@ This purpose of this script is to make the process of obtaining and renewing Let
 
 This script makes use of Certbot's `--webroot` directive which obtains a certificate by writing to the webroot directory of an already running web-server using the ACME HTTP-01 authentication challenge.
 
+![Screen Shot 2021-09-23 at 5 20 40 PM](https://user-images.githubusercontent.com/5332509/134679027-f3cec176-9443-45b0-b586-063094fcf2cf.png)
+<p style="text-align: center;">[Image 1: Let's Encrypt example certificate as seen in browser]</p>
 
-## Usage
+## <a name="prereq"></a>Prerequisites
+
+Before starting with EZ Let’s Encrypt, you need to:
+
+- Have [Docker](https://docs.docker.com/get-docker/) installed on the host you wish to install the Let's Encrypt certificate on
+- Own or control the registered domain name for the certificate. If you don’t have a registered domain name, you can use a domain name registrar, such as [GoDaddy](https://www.godaddy.com/domains/domain-name-search) or [dnsexit](https://www.dnsexit.com/)
+- Create a DNS record that associates your domain name and your server’s public IP address
+
+Now you can easily set up Let’s Encrypt SSL certificates with Nginx and Certbot using Docker.
+
+## <a name="usage"></a>Usage
 
 The `ez_letsencrypt.sh` script currently supports the following options.
 
@@ -46,7 +57,7 @@ Usage: ./ez_letsencrypt.sh -h <hostname> [<options>]
 
 ```
 
-## Detailed Usage
+## <a name="detusage"></a>Detailed Usage
 
 ### `-h`, `--hostname` `<hostname>`: hostname you are requesting the ssl certificate for
 
@@ -105,7 +116,7 @@ Usage: ./ez_letsencrypt.sh -h <hostname> [<options>]
 
 - **OPTIONAL**: verbose mode for additional debug related output.
 
-## Examples
+## <a name="examples"></a>Examples
 
 ### Obtain certificate for new environment - no prior running web service
 
@@ -359,9 +370,55 @@ The new certificate files can be found under the `live/$(hostname)/` directory a
 
 **Goal**: renew an existing certificate for `aerpaw-dev.renci.org` which isn't presently running a web-server on either port 80 or port 443
 
+This situation can arise when a user does not want to embed the `.well-known` location stanza into their Nginx configuration for port 80 and would prefer to momentarily bring their service down in order to renew their Let's Encrypt certificate.
+
 - Hostname: `aerpaw-dev.renci.org`
 - Store certs at: `/root/certs`
 - Store webroot challenge files at: `$(pwd)/acme_files`
+
+Test renew with `--dryrun`:
+
+```console
+$ ./ez_letsencrypt.sh --hostname aerpaw-dev.renci.org \
+>     --renew \
+>     --certsdir /root/certs \
+>     --webrootdir $(pwd)/acme_files \
+>     --dryrun
+Saving debug log to /var/log/letsencrypt/letsencrypt.log
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Processing /etc/letsencrypt/renewal/aerpaw-dev.renci.org.conf
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Simulating renewal of an existing certificate for aerpaw-dev.renci.org
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Congratulations, all simulated renewals succeeded:
+  /etc/letsencrypt/live/aerpaw-dev.renci.org/fullchain.pem (success)
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+```
+
+Renew certificate:
+
+```console
+$ ./ez_letsencrypt.sh --hostname aerpaw-dev.renci.org \
+>     --renew \
+>     --certsdir /root/certs \
+>     --webrootdir $(pwd)/acme_files
+Saving debug log to /var/log/letsencrypt/letsencrypt.log
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Processing /etc/letsencrypt/renewal/aerpaw-dev.renci.org.conf
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Certificate not yet due for renewal
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+The following certificates are not due for renewal yet:
+  /etc/letsencrypt/live/aerpaw-dev.renci.org/fullchain.pem expires on 2021-12-22 (skipped)
+No renewals were attempted.
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+```
+
+Since the certificate is still within its window of validity it was not renewed at this time.
 
 ### Renew certificate - has prior running Nginx service
 
@@ -530,7 +587,7 @@ Tp+h/rnQjL05vAwjx8+RppBa2EWrAxO+wSN6ucTInUf2luC5dmtQNmb3DQ==
 -----END PUBLIC KEY-----
 ```
 
-## Reference
+## <a name="ref"></a>Reference
 
 - Let's Encrypt: [https://letsencrypt.org](https://letsencrypt.org)
 - Certbot commands: [https://certbot.eff.org/docs/using.html#certbot-commands](https://certbot.eff.org/docs/using.html#certbot-commands)
