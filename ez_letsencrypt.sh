@@ -26,7 +26,7 @@ Usage: $0 -h <hostname> [<options>]
     -n, --nginx <nginx_name>        use existing nginx container for host challenge
     -c, --certsdir <certs_dir>      directory on host to store let's encrypt ssl certificate
     -w, --webrootdir <webroot_dir>  directory on host to store webroot challenge files
-    -k, --checkcert                 show certificate issuer, subject, email and dates for given hostname
+    -k, --checkcert                 show certificate issuer, subject and dates for given hostname
     -p, --pubkey                    show certificate pubkey for given hostname
     -d, --dryrun                    test "renew" or "certonly" without saving any certificates to disk
     -r, --renew                     renew all previously obtained certificates that are near expiry
@@ -40,7 +40,7 @@ exit 1;
 # execute openssl s_client and display issuer subject email and dates
 openssl_check_cert() {
     echo | openssl s_client -servername $le_hostname -connect $le_hostname:443 2>/dev/null | \
-    openssl x509 -noout -issuer -subject -email -dates
+    openssl x509 -noout -issuer -subject -dates
 }
 
 # execute openssl s_client and display pubkey
@@ -158,7 +158,8 @@ copy_server_conf() {
     IS_NGINX_UP=$(docker ps -f "name=${nginx_container}" -q)
     if [ ! -z "$IS_NGINX_UP" ]; then
         sleep 3s
-        docker cp ./letsencrypt.conf $nginx_container:/etc/nginx/conf.d/letsencrypt.conf >/dev/null 2>&1
+        # letsencrypt.conf is copied using leading 0's to force it to be evaluated before default.conf on import
+        docker cp ./letsencrypt.conf $nginx_container:/etc/nginx/conf.d/0000_letsencrypt.conf >/dev/null 2>&1
         docker exec $nginx_container /usr/sbin/nginx -t >/dev/null 2>&1
         docker exec $nginx_container /usr/sbin/nginx -s reload >/dev/null 2>&1
         rm -f ./letsencrypt.conf >/dev/null 2>&1
@@ -388,17 +389,20 @@ case $dryrun in
                     generate_https_letsencrypt_conf
                     run_https_nginx_container
                     copy_server_conf
-                fi
-                echo "[INFO] Result of --checkcert"
-                openssl_check_cert
-
-                echo "[INFO] Result of --pubkey"
-                openssl_pubkey
-
-                # remove https nginx if needed
-                if [ -z "$le_nginx" ]; then
+                    echo "[INFO] Result of --checkcert"
+                    openssl_check_cert
+                    echo "[INFO] Result of --pubkey"
+                    openssl_pubkey
+                    # remove https nginx if needed
                     remove_nginx_container
                 fi
+                # inform user of nginx ssl configuration
+                cat <<EOF
+[INFO] Nginx ssl certificate configuration values (relative to nginx container: $nginx_container)
+- ssl_certificate           /etc/letsencrypt/live/$le_hostname/fullchain.pem;
+- ssl_certificate_key       /etc/letsencrypt/live/$le_hostname/privkey.pem;
+- ssl_trusted_certificate   /etc/letsencrypt/live/$le_hostname/chain.pem;
+EOF
                 ;;
         esac
         ;;
