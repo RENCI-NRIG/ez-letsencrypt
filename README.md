@@ -255,7 +255,7 @@ server {
 server {
 
     listen 443 ssl;
-    server_name nrig-ci.renci.org;
+    server_name aerpaw-dev.renci.org;
 
     # NEW Let's Encrypt Certificate 
     ssl_certificate           /etc/letsencrypt/live/aerpaw-dev.renci.org/fullchain.pem;
@@ -433,7 +433,7 @@ server {
 server {
 
     listen 443 ssl;
-    server_name nrig-ci.renci.org;
+    server_name aerpaw-dev.renci.org;
 
     # NEW Let's Encrypt Certificate 
     ssl_certificate           /etc/letsencrypt/live/aerpaw-dev.renci.org/fullchain.pem;
