@@ -97,14 +97,15 @@ Usage: ./ez_letsencrypt.sh -h <hostname> [<options>]
           - /home/jenkins/acme_files:/data/letsencrypt  # --webrootdir
         restart: always
     ```
+    
     These updates generally require a restart of the Nginx container if it had already been running.
     
     ```console
     $ docker-compose stop nginx && docker-compose rm -fv nginx && docker-compose up -d nginx
-Stopping nginx ... done
-Going to remove nginx
-Removing nginx ... done
-Creating nginx ... done
+    Stopping nginx ... done
+    Going to remove nginx
+    Removing nginx ... done
+    Creating nginx ... done
     ```
 
 ### `-c`, `--certsdir` `<certs_dir>`: directory on host to store let's encrypt ssl certificate
