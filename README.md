@@ -9,6 +9,12 @@ A shell script to obtain and renew [Let's Encrypt](https://letsencrypt.org) cert
 - [Usage](#usage)
 - [Detailed Usage](#detusage)
 - [Examples](#examples)
+    - [Obtain certificate for new environment - no prior running web service](#new-no-nginx)
+    - [Obtain certificate for preexisting environment - has prior running Nginx service](#new-yes-nginx)
+    - [Renew certificate - no prior running web service](#renew-no-nginx)
+    - [Renew certificate - has prior running Nginx service](#renew-yes-nginx)
+    - [Convenience option `--checkcert`](#checkcert)
+    - [Convenience option `--pubkey`](#pubkey)
 - [References](#ref)
 
 ## <a name="about"></a>About
@@ -73,18 +79,44 @@ Usage: ./ez_letsencrypt.sh -h <hostname> [<options>]
 ### `-n`, `--nginx` `<nginx_name>`: use existing nginx container for host challenge
 
 - **OPTIONAL**: Use your preexisting Nginx container name instead of standing up a new one for the host challenge
-- The preexisting Nginx container must also define the `webrootdir` as a volume mount of the form: `<local_mount>:/data/letsencrypt/` so that the web-server receiving the challenge files can place them into the same volume mount that the Certbot uses to respond to the files
+- The preexisting Nginx container must also define the `certsdir` as a volume mount of the form: `<local_mount>:/etc/letsencrypt` so that the web-server can place the Let's Encrypt certificate files following the authentication challenge
+- The preexisting Nginx container must also define the `webrootdir` as a volume mount of the form: `<local_mount>:/data/letsencrypt` so that the web-server receiving the challenge files can place them into the same volume mount that the Certbot uses to respond to the files
+- Example snippet from `docker-compose.yaml`
+
+    ```yaml
+      nginx:
+        image: nginx:latest
+        container_name: nginx
+        ports:
+          - '80:80'
+          - '443:443'
+        volumes:
+          - ${NGINX_DEFAULT_CONF:-./nginx/default.conf}:/etc/nginx/conf.d/default.conf
+          - ${NGINX_LOGS:-./logs/nginx}:/var/log/nginx
+          - /root/certs:/etc/letsencrypt                # --certsdir
+          - /home/jenkins/acme_files:/data/letsencrypt  # --webrootdir
+        restart: always
+    ```
+    These updates generally require a restart of the Nginx container if it had already been running.
+    
+    ```console
+    $ docker-compose stop nginx && docker-compose rm -fv nginx && docker-compose up -d nginx
+Stopping nginx ... done
+Going to remove nginx
+Removing nginx ... done
+Creating nginx ... done
+    ```
 
 ### `-c`, `--certsdir` `<certs_dir>`: directory on host to store let's encrypt ssl certificate
 
 - **OPTIONAL**: Defines where to place the Let's Encrypt certificate files following the authentication challenge
-- Defined as an Nginx container volume mount: `<local_mount>:/etc/letsencrypt/`
+- Defined as an Nginx container volume mount: `<local_mount>:/etc/letsencrypt`
 - Default value for local mount is: `$(pwd)/certsdir`
 
 ### `-w`, `--webrootdir` `<webroot_dir>`: directory on host to store webroot challenge files
 
 - **OPTIONAL**: Defines where to place files in a server's webroot folder for authentication challenge
-- Defined as an Nginx container volume mount: `<local_mount>:/data/letsencrypt/`
+- Defined as an Nginx container volume mount: `<local_mount>:/data/letsencrypt`
 - Default value for local mount is: `$(pwd)/webrootdir`
 
 ### `-k`, `--checkcert`: show certificate issuer, subject and dates for given hostname
@@ -118,7 +150,7 @@ Usage: ./ez_letsencrypt.sh -h <hostname> [<options>]
 
 ## <a name="examples"></a>Examples
 
-### Obtain certificate for new environment - no prior running web service
+### <a name="new-no-nginx"></a>Obtain certificate for new environment - no prior running web service
 
 **Goal**: obtain a new certificate for `aerpaw-dev.renci.org`
 
@@ -202,6 +234,41 @@ RV6GAAvZ8RqmDqno0p/9Unt+laEZXQB3Jl3rj1AuVNsVfaImlwj05AWZBl81nj/0
 - ssl_trusted_certificate   /etc/letsencrypt/live/aerpaw-dev.renci.org/chain.pem;
 ```
 
+Note the Nginx configuration paths for the newly generated SSL Certificate relative to the Nginx container.
+
+```console
+[INFO] Nginx ssl certificate configuration values (relative to nginx container: nginx-for-some-app)
+- ssl_certificate           /etc/letsencrypt/live/aerpaw-dev.renci.org/fullchain.pem;
+- ssl_certificate_key       /etc/letsencrypt/live/aerpaw-dev.renci.org/privkey.pem;
+- ssl_trusted_certificate   /etc/letsencrypt/live/aerpaw-dev.renci.org/chain.pem;
+```
+
+Using `default.conf` as an example, the above values would be used for the `ssl_certificate` entries.
+
+```nginx
+server {
+  listen 80;
+  server_name aerpaw-dev.renci.org;
+  return 301 https://$host$request_uri;
+}
+
+server {
+
+    listen 443 ssl;
+    server_name nrig-ci.renci.org;
+
+    # NEW Let's Encrypt Certificate 
+    ssl_certificate           /etc/letsencrypt/live/aerpaw-dev.renci.org/fullchain.pem;
+    ssl_certificate_key       /etc/letsencrypt/live/aerpaw-dev.renci.org/privkey.pem;
+    ssl_trusted_certificate   /etc/letsencrypt/live/aerpaw-dev.renci.org/chain.pem;
+
+    location / {
+        return 301 https://aerpaw-dev.renci.org/jenkins;
+    }
+    ...
+}
+```
+
 After answering **Y(es)/N(o)** regarding registration a new certificate will be issued and placed in the `certsdir`. In this example that is the `/root/certs` directory:
 
 ```console
@@ -244,7 +311,7 @@ After answering **Y(es)/N(o)** regarding registration a new certificate will be 
 
 The new certificate files can be found under the `live/$(hostname)/` directory as symbolic links that reference versioned archive files. The versioned archive files are the actual files that are updated when the certificates are renewed and the symbolic links are regenerated.
 
-### Obtain certificate for preexisting environment - has prior running Nginx service
+### <a name="new-yes-nginx"></a>Obtain certificate for preexisting environment - has prior running Nginx service
 
 **Goal**: obtain a new certificate for `aerpaw-dev.renci.org` which is already running an Nginx web-server on port 80
 
@@ -259,7 +326,34 @@ nginx-for-some-app | nginx:alpine | 0.0.0.0:80->80/tcp, :::80->80/tcp
 - Email to register: `michael.j.stealey@gmail.com`
 - Nginx container name: `nginx-for-some-app`
 - Store SSL cert at: `/root/certs`
-- Store webroot challenge files at: `$(pwd)/acme_files`
+- Store webroot challenge files at: `/home/jenkins/acme_files`
+
+Add the `--certsdir` and `--webroot` volume mounts to your deployed Nginx container (example using `docker-compose.yaml`)
+
+```yaml
+  nginx-for-some-app:
+    image: nginx:latest
+    container_name: nginx-for-some-app
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ${NGINX_DEFAULT_CONF:-./nginx/default.conf}:/etc/nginx/conf.d/default.conf
+      - ${NGINX_LOGS:-./logs/nginx}:/var/log/nginx
+      - /root/certs:/etc/letsencrypt                # --certsdir
+      - /home/jenkins/acme_files:/data/letsencrypt  # --webrootdir
+    restart: always
+```
+
+Volume mount updates generally require a restart of the Nginx container to be recognized.
+    
+```console
+$ docker-compose stop nginx-for-some-app && docker-compose rm -fv nginx-for-some-app && docker-compose up -d nginx-for-some-app
+Stopping nginx-for-some-app ... done
+Going to remove nginx-for-some-app
+Removing nginx-for-some-app ... done
+Creating nginx-for-some-app ... done
+```
 
 Test run with `--dryrun`:
 
@@ -268,7 +362,7 @@ $ ./ez_letsencrypt.sh --hostname aerpaw-dev.renci.org \
 >     --email michael.j.stealey@gmail.com \
 >     --nginx nginx-for-some-app \
 >     --certsdir /root/certs \
->     --webrootdir $(pwd)/acme_files \
+>     --webrootdir /home/jenkins/acme_files \
 >     --dryrun
 Saving debug log to /var/log/letsencrypt/letsencrypt.log
 Simulating a certificate request for aerpaw-dev.renci.org
@@ -283,7 +377,7 @@ $ ./ez_letsencrypt.sh --hostname aerpaw-dev.renci.org \
 >     --email michael.j.stealey@gmail.com \
 >     --nginx nginx-for-some-app \
 >     --certsdir /root/certs \
->     --webrootdir $(pwd)/acme_files
+>     --webrootdir /home/jenkins/acme_files
 Saving debug log to /var/log/letsencrypt/letsencrypt.log
 
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -316,6 +410,55 @@ If you like Certbot, please consider supporting our work by:
 - ssl_certificate           /etc/letsencrypt/live/aerpaw-dev.renci.org/fullchain.pem;
 - ssl_certificate_key       /etc/letsencrypt/live/aerpaw-dev.renci.org/privkey.pem;
 - ssl_trusted_certificate   /etc/letsencrypt/live/aerpaw-dev.renci.org/chain.pem;
+```
+
+Note the Nginx configuration paths for the newly generated SSL Certificate relative to the Nginx container.
+
+```console
+[INFO] Nginx ssl certificate configuration values (relative to nginx container: nginx-for-some-app)
+- ssl_certificate           /etc/letsencrypt/live/aerpaw-dev.renci.org/fullchain.pem;
+- ssl_certificate_key       /etc/letsencrypt/live/aerpaw-dev.renci.org/privkey.pem;
+- ssl_trusted_certificate   /etc/letsencrypt/live/aerpaw-dev.renci.org/chain.pem;
+```
+
+Using `default.conf` as an example, the above values would replace any prior `ssl_certificate` entries.
+
+```nginx
+server {
+  listen 80;
+  server_name aerpaw-dev.renci.org;
+  return 301 https://$host$request_uri;
+}
+
+server {
+
+    listen 443 ssl;
+    server_name nrig-ci.renci.org;
+
+    # NEW Let's Encrypt Certificate 
+    ssl_certificate           /etc/letsencrypt/live/aerpaw-dev.renci.org/fullchain.pem;
+    ssl_certificate_key       /etc/letsencrypt/live/aerpaw-dev.renci.org/privkey.pem;
+    ssl_trusted_certificate   /etc/letsencrypt/live/aerpaw-dev.renci.org/chain.pem;
+
+    # Prior SSL Certificate - no longer valid
+    #ssl_certificate /etc/nginx/ssl/server.crt;
+    #ssl_certificate_key /etc/nginx/ssl/server.key;
+
+    location / {
+        return 301 https://aerpaw-dev.renci.org/jenkins;
+    }
+    ...
+}
+```
+
+Updates generally require a restart of the Nginx container to be recognized.
+    
+```console
+$ docker-compose stop nginx-for-some-app && docker-compose rm -fv nginx-for-some-app && docker-compose up -d nginx-for-some-app
+Stopping nginx-for-some-app ... done
+Going to remove nginx-for-some-app
+Removing nginx-for-some-app ... done
+Creating nginx-for-some-app ... done
 ```
 
 After answering **Y(es)/N(o)** regarding registration a new certificate will be issued and placed in the `certsdir`. In this example that is the `/root/certs` directory:
@@ -366,7 +509,7 @@ After answering **Y(es)/N(o)** regarding registration a new certificate will be 
 
 The new certificate files can be found under the `live/$(hostname)/` directory as symbolic links that reference versioned archive files. The versioned archive files are the actual files that are updated when the certificates are renewed and the symbolic links are regenerated.
 
-### Renew certificate - no prior running web service
+### <a name="renew-no-nginx"></a>Renew certificate - no prior running web service
 
 **Goal**: renew an existing certificate for `aerpaw-dev.renci.org` which isn't presently running a web-server on either port 80 or port 443
 
@@ -420,7 +563,7 @@ No renewals were attempted.
 
 Since the certificate is still within its window of validity it was not renewed at this time.
 
-### Renew certificate - has prior running Nginx service
+### <a name="renew-yes-nginx"></a>Renew certificate - has prior running Nginx service
 
 **Goal**: renew an existing certificate for `aerpaw-dev.renci.org` which is already running an Nginx web-server on port 80 and 443
 
@@ -529,7 +672,7 @@ Ask for help or search for solutions at https://community.letsencrypt.org. See t
 Adding the aforementioned `.well-known` location block should resolve the issue.
 
 
-### Convenience option `--checkcert`
+### <a name="checkcert"></a>Convenience option `--checkcert`
 
 **Goal**: retrieve certificate information for `aerpaw-dev.renci.org` which is already running an Nginx web-server on port 443
 
@@ -553,7 +696,7 @@ notBefore=Mar 25 00:00:00 2021 GMT
 notAfter=Mar 30 23:59:59 2022 GMT
 ```
 
-### Convenience option `--pubkey`
+### <a name="pubkey"></a>Convenience option `--pubkey`
 
 **Goal**: retrieve pubkey information for `aerpaw-dev.renci.org` which is already running an Nginx web-server on port 443
 
